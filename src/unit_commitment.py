@@ -1,12 +1,13 @@
 import gc
+import numpy as np
 import gurobipy as gp
 
 from .parameter import Parameter
+from .output import Output
 from .utils import GurobiModelStatus
 
-
 def solve_uc(
-    parameter: Parameter
+    parameter: Parameter,
 ):
     # attribute localization
     num_units = parameter.num_units
@@ -260,6 +261,23 @@ def solve_uc(
     #
     model.optimize()
 
+    #
     if model.Status != gp.GRB.OPTIMAL:
         raise GurobiModelStatus(model.Status)
-    return model
+    
+    #
+    output = Output()
+    output.total_cost_system = total_cost_system.getValue()
+    output.total_cost_generation = total_cost_generation.getValue()
+    output.total_cost_startup = total_cost_startup.getValue()
+    output.u = np.array(model.getAttr("X", u).select()).reshape(num_units, num_periods)
+    output.p = np.array(model.getAttr("X", p).select()).reshape(num_units, num_periods)
+    output.r = np.array(model.getAttr("X", p_bar).select()).reshape(num_units, num_periods) - output.p
+    output.total_cost_reserve = (
+        output.r ** 2 * np.array(cost_quad)[:, None]
+        + output.r * np.array(cost_lin)[:, None]
+        + output.u * np.array(cost_const)[:, None]
+    ).sum()
+    return output
+    
+    
