@@ -6,6 +6,7 @@ from .parameter import Parameter
 from .output import Output
 from .utils import GurobiModelStatus
 
+
 def solve_uc(
     parameter: Parameter,
 ):
@@ -40,11 +41,9 @@ def solve_uc(
     p_ub = [[p_max_i] * num_periods for p_max_i in p_max]
     cost_startup_step_ub = [[ub] * num_periods for ub in [max(cost_i) for cost_i in cost_startup_step]]
 
-    # variables
+    # variables and auxiliary variables
     p = model.addVars(range(num_units), range(num_periods), lb=0, ub=p_ub)
     u = model.addVars(range(num_units), range(num_periods), vtype=gp.GRB.BINARY)
-
-    # auxiliary variables
     p_bar = model.addVars(range(num_units), range(num_periods), lb=0, ub=p_ub)
     cost_startup = model.addVars(range(num_units), range(num_periods), lb=0, ub=cost_startup_step_ub)
 
@@ -58,7 +57,7 @@ def solve_uc(
     
     def u_minus_proof(i, t_):
         return u[i, t_] if t_ >= 0 else u_prev[i][t_]
-        
+
     # 
     model.addConstrs(
         gp.quicksum(
@@ -272,12 +271,23 @@ def solve_uc(
     output.total_cost_startup = total_cost_startup.getValue()
     output.u = np.array(model.getAttr("X", u).select()).reshape(num_units, num_periods)
     output.p = np.array(model.getAttr("X", p).select()).reshape(num_units, num_periods)
-    output.r = np.array(model.getAttr("X", p_bar).select()).reshape(num_units, num_periods) - output.p
-    output.total_cost_reserve = (
-        output.r ** 2 * np.array(cost_quad)[:, None]
-        + output.r * np.array(cost_lin)[:, None]
-        + output.u * np.array(cost_const)[:, None]
-    ).sum()
+    output.p_bar = np.array(model.getAttr("X", p_bar).select()).reshape(num_units, num_periods)
+    output.cost_startup = np.array(model.getAttr("X", cost_startup).select()).reshape(num_units, num_periods)
+    output.compute_auxiliary(parameter=parameter)
+
+    #
+
+
+
     return output
-    
-    
+
+
+
+
+# output needs to have bool variables as input for diff uc methods like below
+
+# def solve_uc but no intertemporal constraints
+
+
+# def solve_uc but with VoLL * p^D_t where p^D_t in [0, p^D_t] for all t in T
+

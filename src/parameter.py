@@ -1,3 +1,6 @@
+import numpy as np 
+
+
 class Parameter:
     def __init__(
         self,
@@ -21,6 +24,7 @@ class Parameter:
         cost_startup_step,
     ):
         to_list = self._to_list
+
         # system
         self.load = to_list(load)
         self.reserve = to_list(reserve)
@@ -39,10 +43,10 @@ class Parameter:
         self.cost_lin = to_list(cost_lin)
         self.cost_const = to_list(cost_const)
         # previous horizon
+        self.min_up_prev = to_list(min_up_prev)
+        self.min_down_prev = to_list(min_down_prev)
         self.p_prev = [to_list(p_prev_i) for p_prev_i in p_prev]
         self.u_prev = [to_list(u_prev_i) for u_prev_i in u_prev]
-        self.min_up_prev = [to_list(min_up_prev_i) for min_up_prev_i in min_up_prev]
-        self.min_down_prev = [to_list(min_down_prev_i) for min_down_prev_i in min_down_prev]
         # startup cost piecewise function
         self.cost_startup_step = [to_list(cost_startup_step_i) for cost_startup_step_i in cost_startup_step]
         # set cardinality
@@ -52,3 +56,6 @@ class Parameter:
 
     def _to_list(self, x):
         return x.tolist() if hasattr(x, 'tolist') else x
+
+    def _to_nparray(self):
+        pass
