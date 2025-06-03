@@ -1,2 +1,3 @@
 *.ipynb linguist-detectable=false
 *.mat linguist-detectable=false
+*.m linguist-detectable=false
