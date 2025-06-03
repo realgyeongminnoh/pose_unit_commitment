@@ -49,7 +49,7 @@ class Parameter:
         self.u_prev = [to_list(u_prev_i) for u_prev_i in u_prev]
         # startup cost piecewise function
         self.cost_startup_step = [to_list(cost_startup_step_i) for cost_startup_step_i in cost_startup_step]
-        # set cardinality
+        # numbers
         self.num_units = len(self.p_min)
         self.num_periods = len(self.load)
         self.num_cooling_steps = [len(cost_startup_step_i) for cost_startup_step_i in self.cost_startup_step]
@@ -57,5 +57,7 @@ class Parameter:
     def _to_list(self, x):
         return x.tolist() if hasattr(x, 'tolist') else x
 
-    def _to_nparray(self):
-        pass
+    # def _to_nparray(self):
+    #     pass
+    # convert from list to np.ndarray
+    # but parameter attributes must stay in list for ED

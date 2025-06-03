@@ -272,11 +272,7 @@ def solve_uc(
     output.u = np.array(model.getAttr("X", u).select()).reshape(num_units, num_periods)
     output.p = np.array(model.getAttr("X", p).select()).reshape(num_units, num_periods)
     output.p_bar = np.array(model.getAttr("X", p_bar).select()).reshape(num_units, num_periods)
-    output.cost_startup = np.array(model.getAttr("X", cost_startup).select()).reshape(num_units, num_periods)
     output.compute_auxiliary(parameter=parameter)
-
-    #
-
 
 
     return output
