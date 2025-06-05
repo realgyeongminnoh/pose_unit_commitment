@@ -1,0 +1,2 @@
+currency: KRW
+power: MW(h)
