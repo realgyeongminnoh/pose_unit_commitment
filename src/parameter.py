@@ -65,26 +65,39 @@ class Parameter:
         return x.tolist() if hasattr(x, 'tolist') else x
     
     def _validate_input(self):
-        for name in [
-            'solar_p_max', 'wind_p', 'hydro_p', 'reserve_up', 'reserve_down',
-            'p_min', 'p_max', 'ramp_up', 'ramp_down', 'startup_ramp', 'shutdown_ramp',
-            'min_up', 'min_down', 'cost_quad', 'cost_lin', 'cost_const',
-            'min_up_prev', 'min_down_prev', 'p_prev', 'u_prev', 'cost_startup_step'
-        ]:
+        period_based = {
+            'solar_p_max', 'solar_p_min', 'wind_p', 'hydro_p',
+            'reserve_up', 'reserve_down'
+        }
+        unit_based = {
+            'p_min', 'p_max', 'ramp_up', 'ramp_down',
+            'startup_ramp', 'shutdown_ramp', 'min_up', 'min_down',
+            'cost_quad', 'cost_lin', 'cost_const',
+            'min_up_prev', 'min_down_prev', 'p_prev',
+            'u_prev', 'cost_startup_step'
+        }
+
+        for name in period_based:
             val = getattr(self, name)
-            expected_len = self.num_periods if name in ['reserve_up', 'reserve_down'] and not isinstance(val[0], list) else self.num_units
-            if isinstance(val, list) and len(val) != expected_len:
-                raise ValueError(f"[Parameter | {name}] got {len(val)}, expected {expected_len}")
+            if len(val) != self.num_periods:
+                raise ValueError(f"[Parameter | {name}] got {len(val)}, expected {self.num_periods}.")
 
-        if not np.array(self.load).shape == (self.num_periods, self.num_buses):
-            raise ValueError(f"[Parameter | load] got {np.array(self.load).shape}, expected {(self.num_periods, self.num_buses)}")
+        for name in unit_based:
+            val = getattr(self, name)
+            if len(val) != self.num_units:
+                raise ValueError(f"[Parameter | {name}] got {len(val)}, expected {self.num_units}.")
 
-        if not all(len(u) == n for u, n in zip(self.u_prev, self.num_cooling_steps)):
-            raise ValueError("[Parameter | u_prev] mistmatch in shape between u_prev and num_cooling_steps")
+        load_shape = np.array(self.load).shape
+        if load_shape != (self.num_periods, self.num_buses):
+            raise ValueError(f"[Parameter | load] got shape {load_shape}, expected {(self.num_periods, self.num_buses)}.")
+
+        for i, (u, csc) in enumerate(zip(self.u_prev, self.cost_startup_step)):
+            if len(u) != len(csc):
+                raise ValueError(f"[Parameter | u_prev[{i}]] length {len(u)} ≠ cost_startup_step[{i}] length {len(csc)}.")
 
     def convert_to_ndarray(self):
         for attr in vars(self):
-            if attr in ['u_prev', 'cost_startup_step', 'num_cooling_steps']:
+            if attr in ['u_prev', 'cost_startup_step']:
                 continue
             val = getattr(self, attr)
             if isinstance(val, list):
