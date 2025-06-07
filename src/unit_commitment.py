@@ -216,11 +216,12 @@ def solve_uc(
 
     # FORWARD; im going crazy because above backward didn't respect ramps; this works
     model.addConstrs(
-        p[i, t] - p_down[i, t] # R_down explicit
-        <=
-        ramp_down[i] * u[i, t + 1]
-        + shutdown_ramp[i] * (u[i, t] - u[i, t + 1])
-        + p_max[i] * (1 - u[i, t])
+        p_down[i, t]
+        >=
+        p[i, t]
+        - ramp_down[i] * u[i, t + 1]
+        - shutdown_ramp[i] * (u[i, t] - u[i, t + 1])
+        - p_max[i] * (1 - u[i, t])
         for i in range(num_units)
         for t in range(num_periods - 1)
     )
