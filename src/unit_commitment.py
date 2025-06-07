@@ -9,6 +9,7 @@ from .utils import GurobiModelStatus
 
 def solve_uc(
     input_uc: Input_uc,
+    output_uc: Output_uc,
 ):
     #################### INPUT ATTRIBUTE LOCALIZATION ####################
     # meta
@@ -105,10 +106,7 @@ def solve_uc(
             z[t, b] * load[t][b]
             for b in range(num_buses)
         )
-        -
-        wind_p[t]
-        -
-        hydro_p[t]
+        - wind_p[t] - hydro_p[t]
         for t in range(num_periods)
     )
 
@@ -314,6 +312,7 @@ def solve_uc(
         for tau in range(1, num_cooling_steps[i] + 1)
     )
 
+    #################### OBJECTIVE ####################
     # SYSTEM GENERATION COST
     total_cost_generation = gp.quicksum(
         cost_quad[i] * p[i, t] * p[i, t]
@@ -343,7 +342,6 @@ def solve_uc(
         for t in range(num_periods)
     )
 
-    #################### SOLVER CALL ####################
     total_cost_system = total_cost_generation + total_cost_startup + total_cost_voll + total_cost_curtail_penalty
     model.setObjective(total_cost_system, gp.GRB.MINIMIZE)
     model.optimize()
@@ -354,12 +352,11 @@ def solve_uc(
         raise GurobiModelStatus(model.Status)
     
     #################### OUTPUT_UC REGISTER ####################
-    output_uc = Output_uc()
     output_uc.total_cost_system = total_cost_system.getValue()
     output_uc.total_cost_generation = total_cost_generation.getValue()
     output_uc.total_cost_startup = total_cost_startup.getValue()
-    output_uc.total_cost_voll = total_cost_voll.getValue()
-    output_uc.total_cost_curtail_penalty = total_cost_curtail_penalty.getValue()
+    output_uc.total_cost_voll = total_cost_voll.getValue() if let_blackout else 0.0
+    output_uc.total_cost_curtail_penalty = total_cost_curtail_penalty.getValue() if let_curtail else 0.0
 
     output_uc.u = np.array(model.getAttr("X", u).select()).reshape(num_units, num_periods)
     output_uc.z = np.array(model.getAttr("X", z).select()).reshape(num_periods, num_buses) if let_blackout else np.ones((num_periods, num_buses))
@@ -367,8 +364,27 @@ def solve_uc(
     output_uc.r_up = np.array(model.getAttr("X", p_up).select()).reshape(num_units, num_periods) - output_uc.p
     output_uc.r_down = output_uc.p - np.array(model.getAttr("X", p_down).select()).reshape(num_units, num_periods)
 
+    output_uc.system_reserve_up = output_uc.r_up.sum(axis=0)
+    output_uc.system_reserve_down = output_uc.r_down.sum(axis=0)
+
     output_uc.blackout = (1 - output_uc.z) * np.array(load)
     output_uc.solar_p = np.array(model.getAttr("X", solar_p).select()).reshape(num_periods,) if let_curtail else np.array(solar_p_max)
     output_uc.solar_curtail = np.array(solar_p_max) - output_uc.solar_p
     
-    return output_uc
+    output_uc.cost_generation = (
+        np.array(cost_quad)[:, None] * output_uc.p * output_uc.p
+        + np.array(cost_lin)[:, None] * output_uc.p
+        + np.array(cost_const)[:, None] * output_uc.u
+    ).sum(axis=0)
+    output_uc.cost_startup = np.array(model.getAttr("X", cost_startup).select()).reshape(num_units, num_periods).sum(axis=0)
+    output_uc.cost_voll = voll * output_uc.blackout.sum(axis=1)
+    output_uc.cost_curtail_penalty = curtail_penalty * output_uc.solar_curtail
+    output_uc.cost_system = output_uc.cost_generation + output_uc.cost_startup + output_uc.cost_voll + output_uc.cost_curtail_penalty
+
+    if not np.all([
+        output_uc.cost_generation.sum() == output_uc.total_cost_generation,
+        output_uc.cost_startup.sum() == output_uc.total_cost_startup,
+        output_uc.cost_voll.sum() == output_uc.total_cost_voll,
+        output_uc.cost_curtail_penalty.sum() == output_uc.total_cost_curtail_penalty,
+    ]):
+        raise ValueError("something wrong")

@@ -1,51 +1,44 @@
 import numpy as np
 
-from .input import Input_uc
-
 
 class Output_uc:
     def __init__(
         self,
     ):
         pass
-        # UC
-        #
-        # self.total_cost_system: float = -1
-        # self.total_cost_generation: float = -1
-        # # self.total_cost_startup: float = -1
-        # self.total_cost_reserve: float = -1
-        # # 
-        # self.u: np.ndarray = np.ndarray([])
-        # self.p: np.ndarray = np.ndarray([])
-        # self.p_bar: np.ndarray = np.ndarray([])
-        # self.r: np.ndarray = np.ndarray([])
-        # self.p_max_true: np.ndarray = np.ndarray([])
-        # self.p_min_true: np.ndarray = np.ndarray([])
-
-    # def compute_auxiliary(self, parameter: Parameter):
-    #     # reserve[i, t]
-    #     self.r = self.p_bar - self.p
-    #     # p_max_true[i, t]
-    #     self.p_max_true = (self.u * np.array(parameter.p_max)[:, None])
-    #     # p_min_true[i, t]
-    #     self.p_min_true = (self.u * np.array(parameter.p_min)[:, None])
 
 
+class Output_ed:
+    def __init__(self, num_periods, num_units, num_buses):
+        self.total_cost_retailor = None
+        self.total_cost_system = None
+        self.total_cost_generation = None
+        self.total_cost_voll = None
+        self.total_cost_curtail_penalty = None
+
+        self.cost_retailor = None
+        self.cost_system = np.zeros(num_periods)
+        self.cost_generation = np.zeros(num_periods)
+        self.cost_voll = np.zeros(num_periods)
+        self.cost_curtail_penalty = np.zeros(num_periods)
+
+        self.z = np.ones((num_periods, num_buses))
+        self.p = np.zeros((num_units, num_periods))
+        
+        self.blackout = np.zeros((num_periods, num_buses))
+        self.solar_p = np.zeros(num_periods)
+        self.solar_curtail = np.zeros(num_periods)
+
+        self.smp = np.zeros(num_periods)
+        self.cost_reserve_up = np.zeros(num_periods)
+        self.cost_reserve_down = np.zeros(num_periods)
 
 
+    def compute_auxiliary_results(self):
+        self.total_cost_system = float(self.cost_system.sum())
+        self.total_cost_generation = float(self.cost_generation.sum())
+        self.total_cost_voll = float(self.cost_voll.sum())
+        self.total_cost_curtail_penalty = float(self.cost_curtail_penalty.sum())
 
-        # total_cost_reserve
-        # ??????????????????????????????????????????????????????????
-        # i have no idea; reserve isn't even real
-        # p.224 6.4.2
-        # EXAMPLE 6.7
-        # "to determine the price of reserve, we must figure out where an 
-        # additional megawatt of serve would come from and how much it woudl cost"
-        # ??????????????????????????????????????????????????????????
-        # self.total_cost_reserve = (
-        #     self.r ** 2 * np.array(parameter.cost_quad)[:, None]
-        #     + self.r * np.array(parameter.cost_lin)[:, None]
-        #     + self.u * np.array(parameter.cost_const)[:, None]
-        # ).sum()
-            
-
+        self.cost_retailor = self.p.sum(axis=0) * self.smp
+        self.total_cost_retailor = float(self.cost_retailor.sum())

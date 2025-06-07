@@ -1,5 +1,6 @@
 import numpy as np 
 
+from src.output import Output_uc
 
 class Input_uc:
     def __init__(
@@ -112,8 +113,45 @@ class Input_uc:
                 setattr(self, attr, np.array(val))
 
 
-class Input_ED:
+class Input_ed:
     def __init__(
         self,
+        # meta
+        time_period, num_units, num_buses, voll, let_blackout, curtail_penalty, let_curtail, exact_reserve,
+        # renewable
+        solar_p_max, solar_p_min,
+        # uc
+        input_uc: Input_uc, 
+        output_uc: Output_uc,        
     ):
-        pass
+        to_list = self._to_list
+
+        # meta
+        self.time_period = time_period
+        self.num_units = num_units
+        self.num_buses = num_buses
+        self.voll = voll
+        self.let_blackout = let_blackout
+        self.curtail_penalty = curtail_penalty
+        self.let_curtail = let_curtail
+        self.exact_reserve = exact_reserve
+        # renewable
+        self.solar_p_max = float(solar_p_max[time_period])
+        self.solar_p_min = float(solar_p_min[time_period])
+        self.wind_p = float(input_uc.wind_p[time_period])
+        self.hydro_p = float(input_uc.hydro_p[time_period])
+        # system
+        self.load = input_uc.load[time_period]
+        self.system_reserve_up = float(output_uc.system_reserve_up[time_period])
+        self.system_reserve_down = float(output_uc.system_reserve_down[time_period])
+        # operational constraint
+        self.u_uc = to_list(output_uc.u[:, time_period])
+        self.p_min = input_uc.p_min
+        self.p_max = input_uc.p_max
+        # generation cost function
+        self.cost_quad = input_uc.cost_quad
+        self.cost_lin = input_uc.cost_lin
+        self.cost_const = input_uc.cost_const
+    
+    def _to_list(self, x):
+        return x.tolist() if hasattr(x, 'tolist') else x
