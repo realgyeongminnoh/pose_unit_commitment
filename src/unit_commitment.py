@@ -10,7 +10,7 @@ from .utils import GurobiModelStatus
 def solve_uc(
     input_uc: Input_uc,
 ):
-    # INPUT ATTRIBUTE LOCALIZATION
+    #################### INPUT ATTRIBUTE LOCALIZATION ####################
     # meta
     num_units = input_uc.num_units
     num_periods = input_uc.num_periods
@@ -51,7 +51,7 @@ def solve_uc(
     cost_startup_step = input_uc.cost_startup_step     # cost_startup_step [i] [tau]
     num_cooling_steps = input_uc.num_cooling_steps     # num_cooling_steps [i]
 
-    # MODEL
+    #################### MODEL ####################
     model = gp.Model()
     model.setParam("OutputFlag", 0)
 
@@ -80,7 +80,6 @@ def solve_uc(
     else:
         solar_p = solar_p_max
 
-
     # helper cleanup
     del p_ub, cost_startup_step_ub
     gc.collect()
@@ -92,7 +91,7 @@ def solve_uc(
     def u_minus_proof(i, t_):
         return u[i, t_] if t_ >= 0 else u_prev[i][t_]
     
-    # CONSTRAINTS
+    #################### CONSTRAINTS ####################
     # LOAD GENERATION BALANCE + ROLLING BLACKOUT
     model.addConstrs(
         gp.quicksum(
@@ -344,6 +343,7 @@ def solve_uc(
         for t in range(num_periods)
     )
 
+    #################### SOLVER CALL ####################
     total_cost_system = total_cost_generation + total_cost_startup + total_cost_voll + total_cost_curtail_penalty
     model.setObjective(total_cost_system, gp.GRB.MINIMIZE)
     model.optimize()
@@ -353,7 +353,7 @@ def solve_uc(
         # if True then probably should let_curtail True then incrementally decrease solar_p_min from solar_p_max recursively to get OPTIMALITY
         raise GurobiModelStatus(model.Status)
     
-    # OUTPUT_UC REGISTER
+    #################### OUTPUT_UC REGISTER ####################
     output_uc = Output_uc()
     output_uc.total_cost_system = total_cost_system.getValue()
     output_uc.total_cost_generation = total_cost_generation.getValue()
