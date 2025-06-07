@@ -2,114 +2,190 @@ import gc
 import numpy as np
 import gurobipy as gp
 
-from .parameter import Parameter
-from .output import Output
+from .input import Input_uc
+from .output import Output_uc
 from .utils import GurobiModelStatus
 
 
 def solve_uc(
-    parameter: Parameter,
+    input_uc: Input_uc,
 ):
-    # attribute localization
-    num_units = parameter.num_units
-    num_periods = parameter.num_periods
-    num_cooling_steps = parameter.num_cooling_steps
-    load = parameter.load
-    reserve = parameter.reserve
-    p_min = parameter.p_min
-    p_max = parameter.p_max
-    ramp_up = parameter.ramp_up
-    ramp_down = parameter.ramp_down
-    startup_ramp = parameter.startup_ramp
-    shutdown_ramp = parameter.shutdown_ramp
-    min_up = parameter.min_up
-    min_down = parameter.min_down
-    p_prev = parameter.p_prev
-    u_prev = parameter.u_prev
-    min_up_prev = parameter.min_up_prev
-    min_down_prev = parameter.min_down_prev
-    cost_quad = parameter.cost_quad
-    cost_lin = parameter.cost_lin
-    cost_const = parameter.cost_const
-    cost_startup_step = parameter.cost_startup_step
+    # INPUT ATTRIBUTE LOCALIZATION
+    # meta
+    num_units = input_uc.num_units
+    num_periods = input_uc.num_periods
+    num_buses = input_uc.num_buses
+    voll = input_uc.voll
+    let_blackout = input_uc.let_blackout
+    curtail_penalty = input_uc.curtail_penalty
+    let_curtail = input_uc.let_curtail
+    exact_reserve = input_uc.exact_reserve
+    # renewable
+    solar_p_max = input_uc.solar_p_max                 # solar_p_max [t]
+    solar_p_min = input_uc.solar_p_min                 # solar_p_min [t]
+    wind_p = input_uc.wind_p                           # wind_p [t]
+    hydro_p = input_uc.hydro_p                         # hydro_p [t]
+    # system
+    load = input_uc.load                               # load [t] [b]
+    system_reserve_up = input_uc.system_reserve_up     # system_reserve_up [t]
+    system_reserve_down = input_uc.system_reserve_down # system_reserve_down [t]
+    # operational constraint
+    p_min = input_uc.p_min                             # p_min [i]
+    p_max = input_uc.p_max                             # p_max [i]
+    ramp_up = input_uc.ramp_up                         # ramp_up [i]
+    ramp_down = input_uc.ramp_down                     # ramp_down [i]
+    startup_ramp = input_uc.startup_ramp               # startup_ramp [i]
+    shutdown_ramp = input_uc.shutdown_ramp             # shutdown_ramp [i]
+    min_up = input_uc.min_up                           # min_up [i]
+    min_down = input_uc.min_down                       # min_down [i]
+    # generation cost function
+    cost_quad = input_uc.cost_quad                     # cost_quad [i]
+    cost_lin = input_uc.cost_lin                       # cost_lin [i]
+    cost_const = input_uc.cost_const                   # cost_const [i]
+    # previous horizon
+    min_up_prev = input_uc.min_up_prev                 # min_up_prev [i]
+    min_down_prev = input_uc.min_down_prev             # min_down_prev [i]
+    p_prev = input_uc.p_prev                           # p_prev [i]
+    u_prev = input_uc.u_prev                           # u_prev [i] [tau]
+    # startup cost function
+    cost_startup_step = input_uc.cost_startup_step     # cost_startup_step [i] [tau]
+    num_cooling_steps = input_uc.num_cooling_steps     # num_cooling_steps [i]
 
-    # model
+    # MODEL
     model = gp.Model()
     model.setParam("OutputFlag", 0)
 
-    # helper ub
+    # helper for variable setup
     p_ub = [[p_max_i] * num_periods for p_max_i in p_max]
     cost_startup_step_ub = [[ub] * num_periods for ub in [max(cost_i) for cost_i in cost_startup_step]]
 
     # variables and auxiliary variables
-    p = model.addVars(range(num_units), range(num_periods), lb=0, ub=p_ub)
     u = model.addVars(range(num_units), range(num_periods), vtype=gp.GRB.BINARY)
-    p_bar = model.addVars(range(num_units), range(num_periods), lb=0, ub=p_ub)
+    p = model.addVars(range(num_units), range(num_periods), lb=0, ub=p_ub)
+    p_up = model.addVars(range(num_units), range(num_periods), lb=0, ub=p_ub)
+    p_down = model.addVars(range(num_units), range(num_periods), lb=0, ub=p_ub)
     cost_startup = model.addVars(range(num_units), range(num_periods), lb=0, ub=cost_startup_step_ub)
 
-    # cleanup
+    if let_blackout:
+        z = model.addVars(range(num_periods), range(num_buses), vtype=gp.GRB.BINARY)
+    else:
+        z = gp.tupledict({
+            (t, b): 1
+            for t in range(num_periods)
+            for b in range(num_buses)
+        })
+
+    if let_curtail:
+        solar_p = model.addVars(range(num_periods), lb=solar_p_min, ub=solar_p_max)
+    else:
+        solar_p = solar_p_max
+
+
+    # helper cleanup
     del p_ub, cost_startup_step_ub
     gc.collect()
 
     # helper functions for minus index proof previous horizon lookup
     def p_minus_proof(i, t_):
-        return p[i, t_] if t_ >= 0 else p_prev[i][t_]
+        return p[i, t_] if t_ >= 0 else p_prev[i]
     
     def u_minus_proof(i, t_):
         return u[i, t_] if t_ >= 0 else u_prev[i][t_]
-
-    # 
+    
+    # CONSTRAINTS
+    # LOAD GENERATION BALANCE + ROLLING BLACKOUT
     model.addConstrs(
         gp.quicksum(
-            p[i, t] 
+            p[i, t]
             for i in range(num_units)
         )
-        == 
-        load[t]
+        +
+        solar_p[t]
+        ==
+        gp.quicksum(
+            z[t, b] * load[t][b]
+            for b in range(num_buses)
+        )
+        -
+        wind_p[t]
+        -
+        hydro_p[t]
         for t in range(num_periods)
     )
 
-    #
-    model.addConstrs(
-        gp.quicksum(
-            p_bar[i, t] 
-            for i in range(num_units)
+    # SYSTEM RESERVE UP & DOWN REQUIREMENT
+    if exact_reserve:
+        model.addConstrs(
+            gp.quicksum(
+                p_up[i, t] - p[i, t]
+                for i in range(num_units)
+            )
+            ==
+            system_reserve_up[t]
+            for t in range(num_periods)
         )
-        >=
-        load[t] + reserve[t]
-        for t in range(num_periods)
-    )
+        model.addConstrs(
+            gp.quicksum(
+                p[i, t] - p_down[i, t]
+                for i in range(num_units)
+            )
+            ==
+            system_reserve_down[t]
+            for t in range(num_periods)
+        )
+    else:
+        model.addConstrs(
+            gp.quicksum(
+                p_up[i, t] - p[i, t]
+                for i in range(num_units)
+            )
+            >=
+            system_reserve_up[t]
+            for t in range(num_periods)
+        )
+        model.addConstrs(
+            gp.quicksum(
+                p[i, t] - p_down[i, t]
+                for i in range(num_units)
+            )
+            >=
+            system_reserve_down[t]
+            for t in range(num_periods)
+        )
 
-    #
+    # P_DOWN, P, P_UP BOUNDED BY EACH OTHER & STATUS RESPECTING P_MIN, P_MAX
     model.addConstrs(
-        p[i, t]
+        p_down[i, t]
         >=
         u[i, t] * p_min[i]
         for i in range(num_units)
         for t in range(num_periods)
     )
-
-    #
     model.addConstrs(
-        p_bar[i, t]
+        p[i, t]
+        >=
+        p_down[i, t]
+        for i in range(num_units)
+        for t in range(num_periods)
+    )
+    model.addConstrs(
+        p_up[i, t]
         >=
         p[i, t]
         for i in range(num_units)
         for t in range(num_periods)
     )
-
-    #
     model.addConstrs(
-        p_bar[i, t]
-        <=
         u[i, t] * p_max[i]
+        >=
+        p_up[i, t]
         for i in range(num_units)
         for t in range(num_periods)
     )
 
-    #
+    # BACKWARD; RAMPUP/STARTUP RAMP-AWARE P+R_UP
     model.addConstrs(
-        p_bar[i, t]
+        p_up[i, t]
         <=
         p_minus_proof(i, t - 1)
         + ramp_up[i] * u_minus_proof(i, t - 1)
@@ -119,9 +195,9 @@ def solve_uc(
         for t in range(num_periods)
     )
 
-    #
+    # FORWARD; TO SHUTDOWN NEXT HOUR P+R_UP SHOULD NOT EXCEED SHUTDOWN RAMP
     model.addConstrs(
-        p_bar[i, t]
+        p_up[i, t]
         <=
         p_max[i] * u[i, t + 1]
         + shutdown_ramp[i] * (u[i, t] - u[i, t + 1])
@@ -129,18 +205,100 @@ def solve_uc(
         for t in range(num_periods - 1)
     )
 
-    #
+    # BACKWARD; RAMPDOWN/SHUTDOWN RAMP-AWARE P+R_DOWN
     model.addConstrs(
-        p_minus_proof(i, t - 1) - p[i, t]
-        <=
-        ramp_down[i] * u[i, t]
-        + shutdown_ramp[i] * (u_minus_proof(i, t - 1) - u[i, t])
-        + p_max[i] * (1 - u_minus_proof(i, t - 1))
+        p_down[i, t]
+        >=
+        p_minus_proof(i, t - 1)
+        - ramp_down[i] * u[i, t]
+        - shutdown_ramp[i] * (u_minus_proof(i, t - 1) - u[i, t])
+        - p_max[i] * (1 - u_minus_proof(i, t - 1))
         for i in range(num_units)
         for t in range(num_periods)
     )
 
-    #
+    # FORWARD; im going crazy because above backward didn't respect ramps; this works
+    model.addConstrs(
+        p[i, t] - p_down[i, t] # R_down explicit
+        <=
+        ramp_down[i] * u[i, t + 1]
+        + shutdown_ramp[i] * (u[i, t] - u[i, t + 1])
+        + p_max[i] * (1 - u[i, t])
+        for i in range(num_units)
+        for t in range(num_periods - 1)
+    )
+
+    # TRIPLE MIN UP TIME CONSTRAINTS
+    model.addConstrs(
+        gp.quicksum(
+            1 - u[i, t]
+            for t in range(min_up_prev[i])
+        )
+        ==
+        0
+        for i in range(num_units)
+    )
+    model.addConstrs(
+        gp.quicksum(
+            u[i, t_delta]
+            for t_delta in range(t, t + min_up[i])
+        )
+        >=
+        min_up[i] * (
+            u[i, t] - u_minus_proof(i, t - 1)
+        )
+        for i in range(num_units)
+        for t in range(min_up_prev[i], num_periods - min_up[i] + 1)
+    )
+    model.addConstrs(
+        gp.quicksum(
+            u[i, t_delta]
+            for t_delta in range(t, num_periods)
+        )
+        >=
+        (num_periods - t) * (
+            u[i, t] - u_minus_proof(i, t - 1)
+        )
+        for i in range(num_units)
+        for t in range(num_periods - min_up[i] + 1, num_periods)
+    )
+
+    # TRIPLE MIN DOWN TIME CONSTRAINTS
+    model.addConstrs(
+        gp.quicksum(
+            u[i, t]
+            for t in range(min_down_prev[i])
+        )
+        ==
+        0
+        for i in range(num_units)
+    )
+    model.addConstrs(
+        gp.quicksum(
+            1 - u[i, t_delta]
+            for t_delta in range(t, t + min_down[i])
+        )
+        >=
+        min_down[i] * (
+            u_minus_proof(i, t - 1) - u[i, t]
+        )
+        for i in range(num_units)
+        for t in range(min_down_prev[i], num_periods - min_down[i] + 1)
+    )
+    model.addConstrs(
+        gp.quicksum(
+            1 - u[i, t_delta]
+            for t_delta in range(t, num_periods)
+        )
+        >=
+        (num_periods - t) * (
+            u_minus_proof(i, t - 1) - u[i, t]
+        )
+        for i in range(num_units)
+        for t in range(num_periods - min_down[i] + 1, num_periods)
+    )
+
+    # STARTUP COST
     model.addConstrs(
         cost_startup[i, t]
         >=
@@ -157,85 +315,7 @@ def solve_uc(
         for tau in range(1, num_cooling_steps[i] + 1)
     )
 
-    # 
-    model.addConstrs(
-        gp.quicksum(
-            1 - u[i, t]
-            for t in range(min_up_prev[i])
-        )
-        ==
-        0
-        for i in range(num_units)
-    )
-
-    #
-    model.addConstrs(
-        gp.quicksum(
-            u[i, t_delta]
-            for t_delta in range(t, t + min_up[i])
-        )
-        >=
-        min_up[i] * (
-            u[i, t] - u_minus_proof(i, t - 1)
-        )
-        for i in range(num_units)
-        for t in range(min_up_prev[i], num_periods - min_up[i] + 1)
-    )
-
-    # 
-    model.addConstrs(
-        gp.quicksum(
-            u[i, t_delta]
-            for t_delta in range(t, num_periods)
-        )
-        >=
-        (num_periods - t) * (
-            u[i, t] - u_minus_proof(i, t - 1)
-        )
-        for i in range(num_units)
-        for t in range(num_periods - min_up[i] + 1, num_periods)
-    )
-
-    #
-    model.addConstrs(
-        gp.quicksum(
-            u[i, t]
-            for t in range(min_down_prev[i])
-        )
-        ==
-        0
-        for i in range(num_units)
-    )
-
-    #
-    model.addConstrs(
-        gp.quicksum(
-            1 - u[i, t_delta]
-            for t_delta in range(t, t + min_down[i])
-        )
-        >=
-        min_down[i] * (
-            u_minus_proof(i, t - 1) - u[i, t]
-        )
-        for i in range(num_units)
-        for t in range(min_down_prev[i], num_periods - min_down[i] + 1)
-    )
-
-    #
-    model.addConstrs(
-        gp.quicksum(
-            1 - u[i, t_delta]
-            for t_delta in range(t, num_periods)
-        )
-        >=
-        (num_periods - t) * (
-            u_minus_proof(i, t - 1) - u[i, t]
-        )
-        for i in range(num_units)
-        for t in range(num_periods - min_down[i] + 1, num_periods)
-    )
-    
-    #
+    # SYSTEM GENERATION COST
     total_cost_generation = gp.quicksum(
         cost_quad[i] * p[i, t] * p[i, t]
         + cost_lin[i] * p[i, t]
@@ -244,46 +324,51 @@ def solve_uc(
         for t in range(num_periods)
     )
 
-    #
+    # SYSTEM STARTUP COST
     total_cost_startup = gp.quicksum(
         cost_startup[i, t]
         for i in range(num_units)
         for t in range(num_periods)
     )
 
-    #
-    total_cost_system = total_cost_generation + total_cost_startup
+    # SYSTEM VALUE OF LOST LOST RESERVE
+    total_cost_voll = voll * gp.quicksum(
+        (1 - z[t, b]) * load[t][b]
+        for t in range(num_periods)
+        for b in range(num_buses)
+    )
 
-    #
+    # SYSTEM CURTAIL PENALTY
+    total_cost_curtail_penalty = curtail_penalty * gp.quicksum(
+        solar_p_max[t] - solar_p[t]
+        for t in range(num_periods)
+    )
+
+    total_cost_system = total_cost_generation + total_cost_startup + total_cost_voll + total_cost_curtail_penalty
     model.setObjective(total_cost_system, gp.GRB.MINIMIZE)
-
-    #
     model.optimize()
 
-    #
+    # NON-OPTIMALITY
     if model.Status != gp.GRB.OPTIMAL:
+        # if True then probably should let_curtail True then incrementally decrease solar_p_min from solar_p_max recursively to get OPTIMALITY
         raise GurobiModelStatus(model.Status)
     
-    #
-    output = Output()
-    output.total_cost_system = total_cost_system.getValue()
-    output.total_cost_generation = total_cost_generation.getValue()
-    output.total_cost_startup = total_cost_startup.getValue()
-    output.u = np.array(model.getAttr("X", u).select()).reshape(num_units, num_periods)
-    output.p = np.array(model.getAttr("X", p).select()).reshape(num_units, num_periods)
-    output.p_bar = np.array(model.getAttr("X", p_bar).select()).reshape(num_units, num_periods)
-    output.compute_auxiliary(parameter=parameter)
+    # OUTPUT_UC REGISTER
+    output_uc = Output_uc()
+    output_uc.total_cost_system = total_cost_system.getValue()
+    output_uc.total_cost_generation = total_cost_generation.getValue()
+    output_uc.total_cost_startup = total_cost_startup.getValue()
+    output_uc.total_cost_voll = total_cost_voll.getValue()
+    output_uc.total_cost_curtail_penalty = total_cost_curtail_penalty.getValue()
 
+    output_uc.u = np.array(model.getAttr("X", u).select()).reshape(num_units, num_periods)
+    output_uc.z = np.array(model.getAttr("X", z).select()).reshape(num_periods, num_buses) if let_blackout else np.ones((num_periods, num_buses))
+    output_uc.p = np.array(model.getAttr("X", p).select()).reshape(num_units, num_periods)
+    output_uc.r_up = np.array(model.getAttr("X", p_up).select()).reshape(num_units, num_periods) - output_uc.p
+    output_uc.r_down = output_uc.p - np.array(model.getAttr("X", p_down).select()).reshape(num_units, num_periods)
 
-    return output
-
-
-
-
-# output needs to have bool variables as input for diff uc methods like below
-
-# def solve_uc but no intertemporal constraints
-
-
-# def solve_uc but with VoLL * p^D_t where p^D_t in [0, p^D_t] for all t in T
-
+    output_uc.blackout = (1 - output_uc.z) * np.array(load)
+    output_uc.solar_p = np.array(model.getAttr("X", solar_p).select()).reshape(num_periods,) if let_curtail else np.array(solar_p_max)
+    output_uc.solar_curtail = np.array(solar_p_max) - output_uc.solar_p
+    
+    return output_uc

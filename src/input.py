@@ -1,15 +1,15 @@
 import numpy as np 
 
 
-class Parameter:
+class Input_uc:
     def __init__(
         self,
         # meta
-        num_units, num_periods, num_buses,
+        num_units, num_periods, num_buses, voll, let_blackout, curtail_penalty, let_curtail, exact_reserve,
         # renewable
         solar_p_max, solar_p_min, wind_p, hydro_p,
         # system
-        load, reserve_up, reserve_down,
+        load, system_reserve_up, system_reserve_down,
         # operational constraint
         p_min, p_max,
         ramp_up, ramp_down,
@@ -23,20 +23,28 @@ class Parameter:
         cost_startup_step,
     ):
         to_list = self._to_list
-
+        
         # meta
         self.num_units = int(num_units)
         self.num_periods = int(num_periods)
         self.num_buses = int(num_buses)
+        self.voll = float(voll) if let_blackout else 0.0
+        self.let_blackout = bool(let_blackout)
+        self.curtail_penalty = float(curtail_penalty) if let_curtail else 0.0
+        self.let_curtail = bool(let_curtail)
+        self.exact_reserve = bool(exact_reserve)
         # renewable
         self.solar_p_max = solar_p_max                                              # shape = (num_periods,)
         self.solar_p_min = solar_p_min                                              # shape = (num_periods,)
         self.wind_p = wind_p                                                        # shape = (num_periods,)
         self.hydro_p = hydro_p                                                      # shape = (num_periods,)
         # system
-        self.load = [to_list(load_t) for load_t in load]                            # shape = (num_periods, num_buses)
-        self.reserve_up = to_list(reserve_up)                                       # shape = (num_periods,)
-        self.reserve_down = to_list(reserve_down)                                   # shape = (num_periods,)
+        self.load = [                                                               # shape = (num_periods, num_buses)
+            to_list(load_t) for load_t in 
+            np.array(load).reshape(num_periods, num_buses)
+        ]                                                                           
+        self.system_reserve_up = to_list(system_reserve_up)                         # shape = (num_periods,)
+        self.system_reserve_down = to_list(system_reserve_down)                     # shape = (num_periods,)
         # operational constraint
         self.p_min = to_list(p_min)                                                 # shape = (num_units,)
         self.p_max = to_list(p_max)                                                 # shape = (num_units,)
@@ -67,7 +75,7 @@ class Parameter:
     def _validate_input(self):
         period_based = {
             'solar_p_max', 'solar_p_min', 'wind_p', 'hydro_p',
-            'reserve_up', 'reserve_down'
+            'system_reserve_up', 'system_reserve_down'
         }
         unit_based = {
             'p_min', 'p_max', 'ramp_up', 'ramp_down',
@@ -80,20 +88,20 @@ class Parameter:
         for name in period_based:
             val = getattr(self, name)
             if len(val) != self.num_periods:
-                raise ValueError(f"[Parameter | {name}] got {len(val)}, expected {self.num_periods}.")
+                raise ValueError(f"[Input_uc | {name}] got {len(val)}, expected {self.num_periods}.")
 
         for name in unit_based:
             val = getattr(self, name)
             if len(val) != self.num_units:
-                raise ValueError(f"[Parameter | {name}] got {len(val)}, expected {self.num_units}.")
+                raise ValueError(f"[Input_uc | {name}] got {len(val)}, expected {self.num_units}.")
 
         load_shape = np.array(self.load).shape
         if load_shape != (self.num_periods, self.num_buses):
-            raise ValueError(f"[Parameter | load] got shape {load_shape}, expected {(self.num_periods, self.num_buses)}.")
+            raise ValueError(f"[Input_uc | load] got shape {load_shape}, expected {(self.num_periods, self.num_buses)}.")
 
         for i, (u, csc) in enumerate(zip(self.u_prev, self.cost_startup_step)):
             if len(u) != len(csc):
-                raise ValueError(f"[Parameter | u_prev[{i}]] length {len(u)} ≠ cost_startup_step[{i}] length {len(csc)}.")
+                raise ValueError(f"[Input_uc | u_prev[{i}]] length {len(u)} ≠ cost_startup_step[{i}] length {len(csc)}.")
 
     def convert_to_ndarray(self):
         for attr in vars(self):
@@ -102,3 +110,10 @@ class Parameter:
             val = getattr(self, attr)
             if isinstance(val, list):
                 setattr(self, attr, np.array(val))
+
+
+class Input_ED:
+    def __init__(
+        self,
+    ):
+        pass
