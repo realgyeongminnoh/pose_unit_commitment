@@ -2,21 +2,42 @@ import numpy as np
 
 
 class Output_uc:
-    def __init__(
-        self,
-    ):
-        pass
+    def __init__(self):
+        self.total_cost_system = None
+        self.total_cost_generation = None
+        self.total_cost_startup = None ###
+        self.total_cost_voll = None
+        self.total_cost_curtail_penalty = None
+
+        self.cost_system = None
+        self.cost_generation = None
+        self.cost_startup = None ###
+        self.cost_voll = None
+        self.cost_curtail_penalty = None
+
+        self.u = None ###
+        self.z = None
+
+        self.p = None
+        self.r_up = None ###
+        self.r_down = None ###
+        self.system_reserve_up = None ###
+        self.system_reserve_down = None ###
+        
+        self.blackout = None
+        self.solar_p = None
+        self.solar_curtail = None
 
 
 class Output_ed:
     def __init__(self, num_periods, num_units, num_buses):
-        self.total_cost_retailor = None
+        self.total_cost_retailor = None ###
         self.total_cost_system = None
         self.total_cost_generation = None
         self.total_cost_voll = None
         self.total_cost_curtail_penalty = None
 
-        self.cost_retailor = None
+        self.cost_retailor = None ###
         self.cost_system = np.zeros(num_periods)
         self.cost_generation = np.zeros(num_periods)
         self.cost_voll = np.zeros(num_periods)
@@ -29,9 +50,9 @@ class Output_ed:
         self.solar_p = np.zeros(num_periods)
         self.solar_curtail = np.zeros(num_periods)
 
-        self.smp = np.zeros(num_periods)
-        self.cost_reserve_up = np.zeros(num_periods)
-        self.cost_reserve_down = np.zeros(num_periods)
+        self.smp = np.zeros(num_periods) ###
+        self.cost_reserve_up = np.zeros(num_periods) ###
+        self.cost_reserve_down = np.zeros(num_periods) ###
 
 
     def compute_auxiliary_results(self):
