@@ -179,6 +179,7 @@ def solve_ed(
 def solve_ed_prev(
     input_ed_prev: Input_ed_prev,
     output_ed_prev: Output_ed_prev,
+    only_p_prev: bool,
 ):
     #################### INPUT ATTRIBUTE LOCALIZATION #################### # name convention messed up with uc but whatever
     # meta
@@ -326,6 +327,9 @@ def solve_ed_prev(
         raise GurobiModelStatus(f"[solve_ed_prev] {model.Status}")
 
     #################### OUTPUT_ED REGISTER ####################
+    if only_p_prev:
+        return np.array(model.getAttr("X", p).select()).reshape(num_units,).tolist()
+    
     output_ed_prev.cost_system = total_cost_system.getValue()
     output_ed_prev.cost_generation = total_cost_generation.getValue()
     output_ed_prev.cost_voll = total_cost_voll.getValue() if let_blackout else 0.0

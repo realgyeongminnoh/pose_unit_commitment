@@ -24,7 +24,7 @@ class Input_uc:
         # startup cost function
         cost_startup_step,
         # mustoff
-        # mustoff,
+        mustoff,
     ):
         to_list = self._to_list
         
@@ -72,7 +72,7 @@ class Input_uc:
         self.cost_startup_step = [to_list(csc_i) for csc_i in cost_startup_step]    # shape = (num_units, \bar\tau_i for each i)
         self.num_cooling_steps = [len(csc_i) for csc_i in self.cost_startup_step]   # shape = (num_units,)
         # mustoff
-        # self.mustoff = 
+        self.mustoff = mustoff
         self._validate_input()
 
     def _to_list(self, x):

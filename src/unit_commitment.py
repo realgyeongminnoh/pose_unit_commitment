@@ -51,6 +51,8 @@ def solve_uc(
     # startup cost function
     cost_startup_step = input_uc.cost_startup_step     # cost_startup_step [i] [tau]
     num_cooling_steps = input_uc.num_cooling_steps     # num_cooling_steps [i]
+    # mustoff
+    mustoff = input_uc.mustoff
 
     #################### MODEL ####################
     model = gp.Model()
@@ -80,6 +82,10 @@ def solve_uc(
         solar_p = model.addVars(range(num_periods), lb=solar_p_min, ub=solar_p_max)
     else:
         solar_p = solar_p_max
+
+    if mustoff is not None:
+        for unit, t in mustoff:
+            model.addConstr(u[unit, t] == 0)
 
     # helper cleanup
     del p_ub, cost_startup_step_ub
@@ -204,26 +210,13 @@ def solve_uc(
 
     # BACKWARD; RAMPDOWN/SHUTDOWN RAMP-AWARE P+R_DOWN
     model.addConstrs(
-        p_down[i, t]
-        >=
-        p_minus_proof(i, t - 1)
-        - ramp_down[i] * u[i, t]
-        - shutdown_ramp[i] * (u_minus_proof(i, t - 1) - u[i, t])
-        - p_max[i] * (1 - u_minus_proof(i, t - 1))
+        p_minus_proof(i, t - 1) - p_down[i, t]
+        <=
+        ramp_down[i] * u[i, t]
+        + shutdown_ramp[i] * (u_minus_proof(i, t - 1) - u[i, t])
+        + p_max[i] * (1 - u_minus_proof(i, t - 1))
         for i in range(num_units)
         for t in range(num_periods)
-    )
-
-    # FORWARD; im going crazy because above backward didn't respect ramps; this works
-    model.addConstrs(
-        p_down[i, t]
-        >=
-        p[i, t]
-        - ramp_down[i] * u[i, t + 1]
-        - shutdown_ramp[i] * (u[i, t] - u[i, t + 1])
-        - p_max[i] * (1 - u[i, t])
-        for i in range(num_units)
-        for t in range(num_periods - 1)
     )
 
     # TRIPLE MIN UP TIME CONSTRAINTS
