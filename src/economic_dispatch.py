@@ -10,6 +10,7 @@ from .utils import GurobiModelStatus
 def solve_ed(
     input_ed: Input_ed,
     output_ed: Output_ed,
+    isitquestion1: bool = False,
 ):
     #################### INPUT ATTRIBUTE LOCALIZATION #################### # name convention messed up with uc but whatever
     # meta
@@ -37,7 +38,7 @@ def solve_ed(
     # generation
     cost_quad = input_ed.cost_quad
     cost_lin = input_ed.cost_lin
-    cost_const = input_ed.cost_const
+    cost_const = input_ed.cost_const    
 
     #################### MODEL ####################
     model = gp.Model()
@@ -132,12 +133,20 @@ def solve_ed(
 
     #################### OBJECTIVE ####################
     # SYSTEM GENERATION COST
-    total_cost_generation = gp.quicksum(
-        cost_quad[i] * p[i] * p[i]
-        + cost_lin[i] * p[i]
-        + cost_const[i] * u_uc[i]
-        for i in range(num_units)
-    )
+    if isitquestion1:
+        total_cost_generation = gp.quicksum(
+            # cost_quad[i] * p[i] * p[i]
+            + cost_lin[i] * p[i]
+            # + cost_const[i] * u_uc[i] #######################################
+            for i in range(num_units)
+        )
+    else:
+        total_cost_generation = gp.quicksum(
+            # cost_quad[i] * p[i] * p[i]
+            + cost_lin[i] * p[i]
+            + cost_const[i] * u_uc[i]
+            for i in range(num_units)
+        )
 
     # SYSTEM VALUE OF LOST LOST RESERVE
     total_cost_voll = voll * gp.quicksum(
@@ -302,7 +311,7 @@ def solve_ed_prev(
     #################### OBJECTIVE ####################
     # SYSTEM GENERATION COST
     total_cost_generation = gp.quicksum(
-        cost_quad[i] * p[i] * p[i]
+        # cost_quad[i] * p[i] * p[i]
         + cost_lin[i] * p[i]
         + cost_const[i] * u_prev[i]
         for i in range(num_units)

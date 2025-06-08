@@ -93,3 +93,18 @@ class Output_uc:
         self.cost_reserve_down = (self.r_down * output_ed.marginal_reserve_down).sum(axis=0)
         self.total_cost_reserve_up = float(self.cost_reserve_up.sum())
         self.total_cost_reserve_down = float(self.cost_reserve_down.sum())
+
+
+
+
+class Output_uc_snapshot:
+    def __init__(self, num_periods, num_units):
+        self.total_cost_generation = None
+        self.cost_generation = np.ones(num_periods)
+
+        self.u = np.ones((num_units, num_periods)) ###
+        self.p = np.zeros((num_units, num_periods))
+
+
+    def compute_auxiliary_results(self):
+        self.total_cost_generation = float(self.cost_generation.sum())

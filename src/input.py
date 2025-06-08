@@ -172,8 +172,8 @@ class Input_ed:
         self.hydro_p = float(input_uc.hydro_p[time_period])
         # system
         self.load = input_uc.load[time_period]
-        self.system_reserve_up = float(output_uc.system_reserve_up[time_period])
-        self.system_reserve_down = float(output_uc.system_reserve_down[time_period])
+        self.system_reserve_up = float(input_uc.system_reserve_up[time_period])
+        self.system_reserve_down = float(input_uc.system_reserve_down[time_period])
         # operational constraint
         self.u_uc = to_list(output_uc.u[:, time_period])
         self.p_min = input_uc.p_min
