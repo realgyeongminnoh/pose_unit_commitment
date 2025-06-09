@@ -342,7 +342,6 @@ def solve_uc(
 
     # NON-OPTIMALITY
     if model.Status != gp.GRB.OPTIMAL:
-        # if True then probably should let_curtail True then incrementally decrease solar_p_min from solar_p_max recursively to get OPTIMALITY
         raise GurobiModelStatus(model.Status)
     
     #################### OUTPUT_UC REGISTER ####################
@@ -375,20 +374,10 @@ def solve_uc(
     output_uc.cost_curtail_penalty = curtail_penalty * output_uc.solar_curtail
     output_uc.cost_system = output_uc.cost_generation + output_uc.cost_startup + output_uc.cost_voll + output_uc.cost_curtail_penalty
 
-    if not np.all([
-        np.abs(output_uc.cost_generation.sum() - output_uc.total_cost_generation) > 0.1,
-        np.abs(output_uc.cost_startup.sum() - output_uc.total_cost_startup) > 0.1,
-        np.abs(output_uc.cost_voll.sum() - output_uc.total_cost_voll) > 0.1,
-        np.abs(output_uc.cost_curtail_penalty.sum() - output_uc.total_cost_curtail_penalty) > 0.1,
-    ]):
-        # raise ValueError("something wrong")
-        print("something wrong")
 
-
-
-
-
-
+########################################################################################
+# QUESTION 2
+########################################################################################
 def solve_uc_snapshot(
     input_uc: Input_uc,
     output_uc: Output_uc,
@@ -399,14 +388,8 @@ def solve_uc_snapshot(
     num_units = input_uc.num_units
     num_periods = input_uc.num_periods
     num_buses = input_uc.num_buses
-    voll = input_uc.voll #no
-    let_blackout = input_uc.let_blackout # false
-    curtail_penalty = input_uc.curtail_penalty # no
-    let_curtail = input_uc.let_curtail #false
-    exact_reserve = input_uc.exact_reserve # false
     # renewable
     solar_p_max = float(input_uc.solar_p_max[time_period])                 # solar_p_max [t]
-    solar_p_min = float(input_uc.solar_p_min[time_period])               # solar_p_min [t]
     wind_p = float(input_uc.wind_p[time_period])                           # wind_p [t]
     hydro_p = float(input_uc.hydro_p[time_period])                         # hydro_p [t]
     # system
@@ -414,24 +397,9 @@ def solve_uc_snapshot(
     # operational constraint
     p_min = input_uc.p_min                             # p_min [i]
     p_max = input_uc.p_max                             # p_max [i]
-    ramp_up = input_uc.ramp_up                         # ramp_up [i]
-    ramp_down = input_uc.ramp_down                     # ramp_down [i]
-    startup_ramp = input_uc.startup_ramp               # startup_ramp [i]
-    shutdown_ramp = input_uc.shutdown_ramp             # shutdown_ramp [i]
-    min_up = input_uc.min_up                           # min_up [i]
-    min_down = input_uc.min_down                       # min_down [i]
     # generation cost function
-    cost_quad = input_uc.cost_quad                     # cost_quad [i]
     cost_lin = input_uc.cost_lin                       # cost_lin [i]
     cost_const = input_uc.cost_const                   # cost_const [i]
-    # previous horizon
-    min_up_prev = input_uc.min_up_prev                 # min_up_prev [i]
-    min_down_prev = input_uc.min_down_prev             # min_down_prev [i]
-    p_prev = input_uc.p_prev                           # p_prev [i]
-    u_prev = input_uc.u_prev                           # u_prev [i] [tau]
-    # startup cost function
-    cost_startup_step = input_uc.cost_startup_step     # cost_startup_step [i] [tau]
-    num_cooling_steps = input_uc.num_cooling_steps     # num_cooling_steps [i]
     # mustoff
     mustoff = input_uc.mustoff
 
@@ -440,21 +408,18 @@ def solve_uc_snapshot(
     model = gp.Model()
     model.setParam("OutputFlag", 0)
 
-
-
     u = model.addVars(range(num_units), vtype=gp.GRB.BINARY)
     p = model.addVars(range(num_units), lb=0, ub=p_max)
 
     z = [1] * num_buses
     solar_p = solar_p_max
 
-    # this required
+    # must off
     if mustoff is not None:
         for unit, t in mustoff:
             if t != time_period:
                 continue
             model.addConstr(u[unit] == 0)
-
 
     #################### CONSTRAINTS ####################
     # Load generation balance
@@ -474,7 +439,6 @@ def solve_uc_snapshot(
         for t in range(num_periods)
     )
 
-
     # Ensure the generation power is within the allowed range for each unit
     model.addConstrs(
         p[i] <= p_max[i] * u[i] for i in range(num_units)
@@ -485,7 +449,6 @@ def solve_uc_snapshot(
         p[i] >= p_min[i] * u[i] for i in range(num_units)
     )
 
-
     total_cost_generation = gp.quicksum(
         cost_lin[i] * p[i]
         + cost_const[i] * u[i]
@@ -493,11 +456,9 @@ def solve_uc_snapshot(
     )
 
     model.setObjective(total_cost_generation, gp.GRB.MINIMIZE)
-
     model.optimize()
 
     if model.Status != gp.GRB.OPTIMAL:
-
         raise GurobiModelStatus(model.Status)
     
     output_uc.cost_generation[time_period] = total_cost_generation.getValue()

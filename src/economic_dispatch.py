@@ -10,7 +10,8 @@ from .utils import GurobiModelStatus
 def solve_ed(
     input_ed: Input_ed,
     output_ed: Output_ed,
-    isitquestion1: bool = False,
+    isitquestion1: bool = False, ########### QUESTION 1 ###########
+    mustoff = None,
 ):
     #################### INPUT ATTRIBUTE LOCALIZATION #################### # name convention messed up with uc but whatever
     # meta
@@ -36,15 +37,20 @@ def solve_ed(
     p_min = input_ed.p_min
     p_max = input_ed.p_max
     # generation
-    cost_quad = input_ed.cost_quad
     cost_lin = input_ed.cost_lin
-    cost_const = input_ed.cost_const    
+    cost_const = input_ed.cost_const
 
     #################### MODEL ####################
     model = gp.Model()
     model.setParam("OutputFlag", 0)
 
     p = model.addVars(num_units, lb=0, ub=p_max)
+
+    ######### question 1 mustoff p=0 force
+    if isitquestion1:
+        for unit, t in mustoff:
+            if t == time_period:
+                model.addConstr(p[unit] == 0)
 
     if let_blackout:
         z = model.addVars(range(num_buses), vtype=gp.GRB.BINARY)
@@ -133,11 +139,10 @@ def solve_ed(
 
     #################### OBJECTIVE ####################
     # SYSTEM GENERATION COST
-    if isitquestion1:
+    if isitquestion1: ####################################### question 1 no load cost external
         total_cost_generation = gp.quicksum(
-            # cost_quad[i] * p[i] * p[i]
             + cost_lin[i] * p[i]
-            # + cost_const[i] * u_uc[i] #######################################
+            # + cost_const[i] * u_uc[i] 
             for i in range(num_units)
         )
     else:
@@ -213,7 +218,6 @@ def solve_ed_prev(
     # operational
     p_min = input_ed_prev.p_min
     p_max = input_ed_prev.p_max
-    cost_quad = input_ed_prev.cost_quad
     cost_lin = input_ed_prev.cost_lin
     cost_const = input_ed_prev.cost_const
 

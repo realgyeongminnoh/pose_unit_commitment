@@ -102,9 +102,11 @@ class Output_uc_snapshot:
         self.total_cost_generation = None
         self.cost_generation = np.ones(num_periods)
 
-        self.u = np.ones((num_units, num_periods)) ###
-        self.p = np.zeros((num_units, num_periods))
+        self.u = np.ones((num_periods, num_units)) ###
+        self.p = np.zeros((num_periods, num_units))
 
 
     def compute_auxiliary_results(self):
         self.total_cost_generation = float(self.cost_generation.sum())
+        self.u = self.u.transpose()
+        self.p = self.p.transpose()
